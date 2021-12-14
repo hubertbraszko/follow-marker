@@ -1,0 +1,8 @@
+#!/bin/bash
+export LC_NUMERIC="en_US.UTF-8"
+stty -F /dev/ttyUSB0 57600
+cd /home/robot40base/robot40human_ws/
+source devel/setup.bash
+export ROS_IP=192.168.1.61
+export ROS_MASTER_URI=http://robot40:11311
+roslaunch base_driver base_controller_with_joy.launch standalone:=false simulation:=false autostart:=false serial_device:=/dev/ttyUSB0
