@@ -13,8 +13,9 @@ import geometry_msgs.msg
 from math import pi
 from std_msgs.msg import String
 from moveit_commander.conversions import pose_to_list
-from geometry_msgs.msg import Twist, Vector3
-from geometry_msgs.msg import Transform
+from geometry_msgs.msg import Twist, Vector3, Transform, Quaternion
+
+
 
 
 class Aruco_marker:
@@ -23,7 +24,8 @@ class Aruco_marker:
         self.y = 0.0
         self.z = 0.0
         self.area = 0.0
-
+        self.transform = Transform()
+        
 
     def getPosition(self):
         return [self.x, self.y]
@@ -48,7 +50,7 @@ class Following_node:
         self.display_trajectory_pub = rospy.Publisher('/move_group/display_planned_path',
                                                moveit_msgs.msg.DisplayTrajectory,
                                                queue_size=20)
-        self.aruco_area: float = 0.0
+        
         self.base_publisher = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
         self.linear = Vector3(0,0,0)
         self.angular = Vector3(0,0,0)
@@ -58,7 +60,7 @@ class Following_node:
         self.pose = self.group.get_current_pose().pose
         
         rospy.Subscriber("/fiducial_vertices", FiducialArray, self.update_aruco_pos)
-        rospy.Subscriber("/fiducial_transforms", FiducialTransformArray, self.get_arucos_translation)
+        rospy.Subscriber("/fiducial_transforms", FiducialTransformArray, self.get_arucos_rotation)
         
         
     def get_to_start_point(self) -> None:
@@ -94,29 +96,68 @@ class Following_node:
             self.aruco.x = 0.0
             self.aruco.y = 0.0
            
-    def get_arucos_translation(self, data: FiducialTransformArray):
-        print(Transform(data.transforms))
-            
+    def get_arucos_translation(self, data: FiducialTransformArray) -> Vector3:
+        #print(data.transforms)
+        translation: Vector3 = Vector3(0,0,0)
+        try:
+            stringData = str(data.transforms)
+            stringData = stringData.splitlines()
+            #print(stringData[3])
+            #print(stringData[4])
+            xData:String = stringData[3]
+            yData:String = stringData[4]
+            zData:String = stringData[5]
+            #print(xData.strip()[3:])
+            translation.x = float(xData.strip()[3:])
+            translation.y = float(yData.strip()[3:])
+            translation.z = float(zData.strip()[3:])
+            #print(translation)
+        except Exception as e:
+            print("error calculating translation: " + e)
+        return translation
+    
+    def get_arucos_rotation(self,data: FiducialTransformArray) -> Quaternion:
+        rotation: Quaternion = Quaternion(0,0,0,0)
+        try:
+            stringData = str(data.transforms)
+            stringData = stringData.splitlines()
+            #print(stringData[3])
+            #print(stringData[4])
+            xData:String = stringData[7]
+            yData:String = stringData[8]
+            zData:String = stringData[9]
+            wData:String = stringData[10]
+            rotation.x = float(xData.strip()[3:])
+            rotation.y = float(yData.strip()[3:])
+            rotation.z = float(zData.strip()[3:])
+            rotation.w = float(wData.strip()[3:])
+            print(rotation)
+        except Exception as e:
+            print("error calculating rotation: " + e)
+        return rotation   
 
 
-    def getAreaOfAruco(self, data: FiducialTransformArray):
-        rospy.sleep(0.5)
+
+    def get_aruco_area(self, data: FiducialTransformArray) -> float:
+        area: float = 0
         try:
             stringData = str(data.transforms)
             stringData = stringData.splitlines()
             for line in stringData:
                 if("fiducial_area" in line):
                     areaLine = line
-                    break
-                
-            #print(areaLine)
+                    break    
             area = float(areaLine[15:len(areaLine)-1])
-            print("lokalnie")
-            print(area)
-            self.aruco.area = area
-            
-        except:
-            self.aruco_area = 0
+            return area
+        except Exception as e:
+            return 0.0
+            print("error calculating area: " + e)
+          
+
+    def update_aruco_data(self, data: FiducialTransformArray) -> None:
+        self.aruco.area = self.get_aruco_area(data)
+        self.aruco.transform.translation = self.get_arucos_translation(data)
+        self.aruco.transform.rotation = self.get_arucos_rotation(data)
 
     def update_arm(self) -> None:
         self.group.set_pose_target(self.pose)
